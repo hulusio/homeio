@@ -15,12 +15,12 @@
 #define IN1_PIN GPIO_NUM_5  //D1
 #define IN2_PIN GPIO_NUM_4  //D2
 #define IN3_PIN GPIO_NUM_0  //D3
-#define IN4_PIN GPIO_NUM_16 //D8
+#define IN4_PIN GPIO_NUM_16 //D0
   //#define IN4_PIN GPIO_NUM_2  //D4 
 
 // Stepper motor parameters
 #define STEPS_PER_REVOLUTION 1000
-#define STEP_DELAY_MS 20 // Adjust for desired speed
+#define STEP_DELAY_MS 10 // Adjust for desired speed
 
 // Full-step sequence for a bipolar stepper motor
 const int full_step_sequence[4][4] =

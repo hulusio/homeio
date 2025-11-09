@@ -31,11 +31,17 @@
 #include "mqtt_client.h"
 #include "driver/gpio.h"
 
+#include "rom/ets_sys.h" // ets_delay_us için
+
 static const char *TAG = "MQTT_EXAMPLE";
 
 // MQTT konuları
 #define MQTT_TOPIC_LIGHT    "/hulusio/light"
 #define MQTT_TOPIC_MOTOR    "/hulusio/motor"
+
+// Yön Tanımlamaları
+#define YUKARI_YON      1           // Açılma yönü
+#define ASAGI_YON       0           // Kapanma yönü
 
 // Kuyruk değişkenleri
 QueueHandle_t light_queue;
@@ -62,26 +68,16 @@ int target_position_steps = 0;  // Perdenin gitmesi gereken hedef konum
 
 
 
-// Define the GPIO pins connected to the L298N driver
-#define IN1_PIN GPIO_NUM_5  //D1
-#define IN2_PIN GPIO_NUM_4  //D2
-#define IN3_PIN GPIO_NUM_0  //D3
-#define IN4_PIN GPIO_NUM_16 //D0
+// Define the GPIO pins connected to the DRV8825 driver
+#define MOTOR_STEP_PIN  GPIO_NUM_2  // D4 pini
+#define MOTOR_DIR_PIN   GPIO_NUM_0  // D3 pini
 
-#define LED_BUILTIN_ESP GPIO_NUM_2 //D4
+
+#define LED_BUILTIN_ESP GPIO_NUM_16 //D0 pini
 
 // Stepper motor parameters
-#define STEPS_PER_REVOLUTION 100 //1000
 #define STEP_DELAY_MS 10 // Adjust for desired speed
 
-// Full-step sequence for a bipolar stepper motor
-const int full_step_sequence[4][4] =
- {
-    {1, 0, 0, 0}, // Step 1
-    {0, 1, 0, 0}, // Step 2
-    {0, 0, 1, 0}, // Step 3
-    {0, 0, 0, 1}  // Step 4
-};
 
 //int motor_parse_payload(const char *payload, char *command, int *value) 
 int motor_parse_payload(const char *payload, int *value) 
@@ -100,31 +96,32 @@ int motor_parse_payload(const char *payload, int *value)
 // Function to initialize GPIO pins
 void motor_gpio_init()
  {
-    gpio_set_direction(IN1_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_direction(IN2_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_direction(IN3_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_direction(IN4_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_direction(MOTOR_STEP_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_direction(MOTOR_DIR_PIN, GPIO_MODE_OUTPUT);
+
 
     gpio_set_direction(LED_BUILTIN_ESP, GPIO_MODE_OUTPUT);
 }
 
-// Function to perform a single step
-void motor_step(int step_index, int direction)
+/**
+ * DRV8825'e tek bir adım darbesi gönderir.
+ * Motor hız ayarı, bu fonksiyon içindeki ets_delay_us() ve 
+ * motor_control_task içindeki vTaskDelay() ile yapılır.
+ */
+void motor_adimi_at(int yon)
  {
-    if (direction == -1)
-     {  // Counter-clockwise
-        gpio_set_level(IN1_PIN, full_step_sequence[step_index][0]);
-        gpio_set_level(IN2_PIN, full_step_sequence[step_index][1]);
-        gpio_set_level(IN3_PIN, full_step_sequence[step_index][2]);
-        gpio_set_level(IN4_PIN, full_step_sequence[step_index][3]);
-    }
-    else
-    { // Clockwise
-        gpio_set_level(IN1_PIN, full_step_sequence[3 - step_index][0]);
-        gpio_set_level(IN2_PIN, full_step_sequence[3 - step_index][1]);
-        gpio_set_level(IN3_PIN, full_step_sequence[3 - step_index][2]);
-        gpio_set_level(IN4_PIN, full_step_sequence[3 - step_index][3]);
-    }
+    // 1. Yön pinini ayarla
+    gpio_set_level(MOTOR_DIR_PIN, yon); 
+    
+    // 2. STEP pinine kısa bir darbe (pulse) gönder
+    
+    // a) STEP pinini HIGH yap (Adımı Başlat)
+    gpio_set_level(MOTOR_STEP_PIN, 1);
+    // Bu gecikme, sürücünün tepki vermesi için minimum süredir (Motor hızını belirlemez)
+    ets_delay_us(5); 
+    
+    // b) STEP pinini LOW yap (Adımı Tamamla)
+    gpio_set_level(MOTOR_STEP_PIN, 0);
 }
 
 
@@ -192,14 +189,14 @@ void motor_control_task(void *pvParameter)
             {
                 // AÇILMA YÖNÜ
                 // motor_adimi_at(YUKARI_YON); // Step motor adımı atma fonksiyonunuz
-                motor_step(current_position_steps % 4, 1);
+                motor_adimi_at(YUKARI_YON);
                 current_position_steps++; 
             } 
             else 
             {
                 // KAPANMA YÖNÜ
                 // motor_adimi_at(ASAGI_YON); // Step motor adımı atma fonksiyonunuz
-                motor_step(current_position_steps % 4, 1);
+                motor_adimi_at(ASAGI_YON);
                 current_position_steps--; 
             }
             

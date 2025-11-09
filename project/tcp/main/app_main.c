@@ -36,12 +36,14 @@
 static const char *TAG = "MQTT_EXAMPLE";
 
 // MQTT konuları
-#define MQTT_TOPIC_LIGHT    "/hulusio/light"
-#define MQTT_TOPIC_MOTOR    "/hulusio/motor"
+#define MQTT_TOPIC_LIGHT                 "/hulusio/light"
+#define MQTT_TOPIC_MOTOR_MAX_POSITION    "/hulusio/max_motor_position"
+#define MQTT_TOPIC_MOTOR                 "/hulusio/motor"
 
 // Yön Tanımlamaları
 #define YUKARI_YON      1           // Açılma yönü
 #define ASAGI_YON       0           // Kapanma yönü
+#define MOTOR_MAX_POSITION         5000  // Motorun maksimum pozisyonu (adım sayısı olarak) (Sofware guard for safety)
 
 // Kuyruk değişkenleri
 QueueHandle_t light_queue;
@@ -63,7 +65,7 @@ typedef struct
 
 // Global Konum Değişkenleri
 int current_position_steps = 0; // Motorun anlık konumu (0: Kapalı, 1000: Açık)
-const int MAX_STEPS = 1000;     // Perdenin tamamen açılması için gereken maksimum adım sayısı
+static int motor_max_position_steps = 2000;     // Perdenin tamamen açılması için gereken maksimum adım sayısı
 int target_position_steps = 0;  // Perdenin gitmesi gereken hedef konum
 
 
@@ -132,24 +134,49 @@ void motor_adimi_at(int yon)
 void light_control_task(void *pvParameter)
 {
     mqtt_message_t message;
+    int value;
     while(1)
     {
         // Kuyrukta mesaj gelmesini bekler
         if (xQueueReceive(light_queue, &message, portMAX_DELAY) == pdPASS)
          {
-            ESP_LOGI("LIGHT_TASK", "Received light command: %s", message.data);
-            if (strcmp(message.data, "ON") == 0)
+            ESP_LOGI("LIGHT_TASK", "Received topic %s ", message.topic);
+            if (strcmp(message.topic, MQTT_TOPIC_MOTOR_MAX_POSITION) == 0)
             {
-                // Işığı aç
-                printf("Lamba aciliyor!\n");
-                gpio_set_level(LED_BUILTIN_ESP, 0);
+                int result = motor_parse_payload(message.data, &value);
+                if (result == 1) 
+                {
+                    // Yeni komuta göre hedefi ayarla
+                    if (value > MOTOR_MAX_POSITION)
+                    {
+                        value = MOTOR_MAX_POSITION; // Safety limit
+                    }
+                    else if (value < 100)
+                    {
+                        value = 100; // Minimum limit
+                    }                     
+                    motor_max_position_steps = value;            
+                    ESP_LOGW("LIGHT_TASK", "new max: %d ", motor_max_position_steps);
+                }
+
             }
-            else if (strcmp(message.data, "OFF") == 0)
-             {
-                // Işığı kapat
-                printf("Lamba kapaniyor!\n");
-                gpio_set_level(LED_BUILTIN_ESP, 1);
+            else
+            {
+                ESP_LOGI("LIGHT_TASK", "Received light command: %s", message.data);
+                if (strcmp(message.data, "ON") == 0)
+                {
+                    // Işığı aç
+                    printf("Lamba aciliyor!\n");
+                    gpio_set_level(LED_BUILTIN_ESP, 0);
+                }
+                else if (strcmp(message.data, "OFF") == 0)
+                {
+                    // Işığı kapat
+                    printf("Lamba kapaniyor!\n");
+                    gpio_set_level(LED_BUILTIN_ESP, 1);
+                }
             }
+
         }
     }
 }
@@ -174,7 +201,15 @@ void motor_control_task(void *pvParameter)
             if (result == 1) 
             {
                 // Yeni komuta göre hedefi ayarla
-                target_position_steps = new_command.value;            
+                target_position_steps = new_command.value; 
+                if (target_position_steps > motor_max_position_steps)
+                {
+                    target_position_steps = motor_max_position_steps; // Safety limit
+                }
+                else if (target_position_steps < 0)
+                {
+                    target_position_steps = 0; // Minimum limit
+                }           
                 ESP_LOGW("MOTOR", "new target: %d. current: %d", target_position_steps, current_position_steps);
             }
 
@@ -235,6 +270,9 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
             msg_id = esp_mqtt_client_subscribe(client, MQTT_TOPIC_LIGHT, 0);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
+            msg_id = esp_mqtt_client_subscribe(client, MQTT_TOPIC_MOTOR_MAX_POSITION, 0);
+            ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+
             msg_id = esp_mqtt_client_subscribe(client, "/topic/qos1", 1);
             ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
@@ -275,6 +313,10 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
              else if (strcmp(new_message.topic, MQTT_TOPIC_MOTOR) == 0)
             {              
                 xQueueSend(motor_queue, &new_message, 0);  
+            }
+            else if (strcmp(new_message.topic, MQTT_TOPIC_MOTOR_MAX_POSITION) == 0)
+            {              
+                xQueueSend(light_queue, &new_message, 0);  
             }
             break;
         case MQTT_EVENT_ERROR:

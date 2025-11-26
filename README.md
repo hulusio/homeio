@@ -3,7 +3,7 @@
 - This project is an IoT automation solution that provides precise position control of curtains via MQTT with a Stepper Motor (NEMA 17) using an ESP8266 NodeMCU development board.project is an IoT automation solution that provides precise position control of ation.
 
 📜 About project
-- MCU: ESP8266 (NodeMCU V3)
+- MCU: ESP8266 
 - Motor Driver: DRV8825
 - Connection: MQTT (Uzaktan kontrol ve durum bildirimi için.)
 - Software: ESP-IDF (ESP8266 RTOS SDK)

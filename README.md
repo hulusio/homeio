@@ -7,8 +7,8 @@
 - Motor Driver: DRV8825
 - Connection: MQTT (Uzaktan kontrol ve durum bildirimi için.)
 - Software: ESP-IDF (ESP8266 RTOS SDK)
-- To see requirements about this project see: co-req-v001.xlsx
-- To see software and hardware funtion implementations see : co-design (drawio)
+**- To see requirements about this project see: co-req-v001.xlsx
+- To see software and hardware funtion implementations see : co-design (drawio)**
   
 🛠️ 1. Hardware Setup and Connections
     1.1 Pin Connections
